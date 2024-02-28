@@ -3,8 +3,7 @@ import numpy as np
 import pandas as pd
 from utils.mode import get_py_files, mode_control
 from utils.bundle.sifting import feasible_order_gen, feasible_order_pair_gen, row2col, cdfs_order_gen, \
-    get_feasible_order_bundles, cdfs_order_gen_par, get_all_order_bundle_cost, cdfs_order_gen_py, \
-    get_feasible_order_bundles_py, get_all_feasible_order_bundles, ob2dict
+    get_all_order_bundle_cost, get_all_feasible_order_bundles, ob2dict
 
 # files = get_py_files()
 # mode_control(files, "debug")
@@ -64,34 +63,19 @@ lookup_table, lookup_index = row2col(num_real_orders, route_pair)
 res = np.zeros((100000, 6), dtype=int)
 count = 0
 
-rr = cdfs_order_gen(route_pair[0], lookup_table, lookup_index, 6, 6, data, time_mat, postcode_arr, garage, shift,
-                    num_real_orders,
-                    etw_g, ltw_gr)
-# %timeit
-# rr = cdfs_order_gen(route_pair[0], lookup_table, lookup_index, 6, 6, data, time_mat, postcode_arr, garage, shift,
-#                     num_real_orders, etw_g, ltw_gr)
-#
-# %timeit
-# rr = cdfs_order_gen_py(route_pair[0], lookup_table, lookup_index, 6, 6, data, time_mat, postcode_arr, garage, shift,
-#                        num_real_orders, etw_g, ltw_gr)
-#
-# %timeit
-# order_bundles_sg = get_feasible_order_bundles_py(route_pair, lookup_table, lookup_index, 6, max_num, data, time_mat,
-#                                                  postcode_arr, garage, shift, num_real_orders, etw_g, ltw_gr)
-#
-# %timeit
-# order_bundles_sg = get_feasible_order_bundles(route_pair, lookup_table, lookup_index, 6, max_num, data, time_mat,
-#                                               postcode_arr, garage, shift, num_real_orders, etw_g, ltw_gr)
+rr = cdfs_order_gen(route_pair[0], lookup_table, lookup_index, max_node, data, time_mat, postcode_arr, garage, shift,
+                    num_real_orders, etw_g, ltw_gr)
 garage_arr = np.arange(5)
-order_bundles, num_cnt = get_all_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, max_num, data,
+order_bundles, num_cnt = get_all_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, data,
                                                         time_mat, postcode_arr, garage_arr, shift, num_real_orders,
                                                         etw_g, ltw_gr)
-cost_saving = get_all_order_bundle_cost(order_bundles, garage_arr, num_cnt, data, dist_mat, postcode_arr, utc, udc)
+
+cost_saving = get_all_order_bundle_cost(order_bundles, garage_arr, np.cumsum(num_cnt), data, dist_mat, postcode_arr, utc, udc)
 obd, obc = ob2dict(order_bundles)
 
 ob = order_bundles
 cost = cost_saving
-mode = "commercial"  # "free"#
+mode = "free"  # "free"#
 truck_gar = {0: 0, 1: 0, 2: 0, 3: 1, 4: 1, 5: 1, 6: 2, 7: 2, 8: 2, 9: 3, 10: 3, 11: 3, 12: 4, 13: 4, 14: 4, 15: 4}
 obt = 8 * np.ones(len(ob))
 truck_time = 6. + 0.002 * np.random.random(len(truck_gar))
@@ -104,3 +88,28 @@ truck_time = 6. + 0.002 * np.random.random(len(truck_gar))
 # rrp = cdfs_order_gen_par(route_pair[0], lookup_table , lookup_index,6, 6, data, time_mat, postcode_arr, garage, shift,
 # #                          num_real_orders, etw_g, ltw_gr)
 # # # %timeit rrp = cdfs_order_gen_par(route_pair[0], lookup_table, lookup_index, 6, 6, data, time_mat, postcode_arr, garage, shift,num_real_orders, etw_g, ltw_gr)
+
+# data preparation
+df = pd.DataFrame(order_bundles)
+order_col = [f"order_{i}" for i in range(1, 7)]
+df.columns = order_col
+df["bundle_id"] = range(len(df))
+df["cost"] = cost
+col = ["bundle_id"]
+col.extend(order_col)
+col.append("cost")
+df = df[col]
+
+df.to_csv("ob_data.csv", index=False)
+
+res_dct = {3: [], 4: [], 5: [], 6: []}
+
+for i in range(len(ob)):
+    cnt = 0
+    for j in range(max_num):
+        if ob[i, j]:
+            cnt += 1
+        else:
+            res_dct[cnt].append(i)
+            break
+    res_dct[cnt].append(i)

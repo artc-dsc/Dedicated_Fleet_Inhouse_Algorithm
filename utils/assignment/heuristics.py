@@ -4,7 +4,7 @@ from utils.assignment.exact import ob2dict
 
 
 def md_primal_heuristics(data, ob, cost, truck_gar, num_cnt, obt, truck_time):
-    remain = np.arange(len(ob))
+    total = np.arange(len(ob))
     perm = np.random.permutation(len(truck_gar))
     obd, obc = ob2dict(ob)
     for truck in perm:
@@ -13,6 +13,7 @@ def md_primal_heuristics(data, ob, cost, truck_gar, num_cnt, obt, truck_time):
         cost_cpy = np.zeros(len(cost))
         cost_cpy[num_cnt[garage]:num_cnt[garage + 1]] = cost[num_cnt[garage]:num_cnt[garage + 1]]
         cost_cpy[obt < truck_t] = 0
+        cost_cpy
         idx = np.argmax(cost_cpy)
         route = trim_route(ob[idx])
 
@@ -20,11 +21,13 @@ def md_primal_heuristics(data, ob, cost, truck_gar, num_cnt, obt, truck_time):
 
 
 @njit
-def update_cardinality(data, cost, remain, ob, max_num):
+def update_cardinality(data, cost, total, ob, max_num):
     d = data.copy()
-    remain_out = np.zeros(len(remain), dtype=int32)
+    remain_out = np.zeros(len(total), dtype=int32)
+    remove_out = np.zeros(len(total), dtype=int32)
     cnt = 0
-    for idx in remain:
+    cnt_rm = 0
+    for idx in total:
         for rid in range(max_num):
             node = ob[idx, rid]
             if not node:
@@ -32,10 +35,12 @@ def update_cardinality(data, cost, remain, ob, max_num):
             d[node, 12] -= 1
             if d[node, 12] < 0:
                 cost[idx] = 0
+                remove_out[cnt_rm] = idx
+                cnt_rm += 1
                 break
         remain_out[cnt] = idx
         cnt += 1
-    return remain_out[:cnt]
+    return remove_out[:cnt_rm], remain_out[:cnt]
 
 
 @njit

@@ -1,5 +1,6 @@
 import numpy as np
 from numba import njit, int32, prange, boolean
+from numba.typed import List
 
 
 @njit
@@ -233,58 +234,126 @@ def _check_route_tw(eat, prev, node, data, time_mat, pca):
 #                 res[cnt, :len(new_route)] = new_route
 #                 cnt += 1
 #     return res
-
 @njit
-def cdfs_order_gen(route, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage, shift,
-                   num_real_orders, etw_g, ltw_gr):
+def _route_extension(route, lookup_table, max_node, data, time_mat, pca, garage, shift, num_real_orders, etw_g, ltw_gr):
+    # stack version of route extension
     cnt = 0
-    res = np.zeros((1000000, max_num), dtype=int32)  #
-    stack = np.zeros((10000, max_num), dtype=int32)  #
-    num = 1
-    stack[0, :len(route)] = route
-    rm = np.zeros(10000, dtype=int32)
-    rm[0] = len(route)
-    while num:
-        num -= 1
-        route = get_route(stack, num, rm)
-        stack[num] = 0  # np.zeros(max_num, dtype=int32)
+    res = List()
+    stack = route
+    while stack:
+        route = stack.pop()
+        for node in lookup_table[route[-1]]:
+            if node == -1:
+                break
+            if is_feasible(route, node, max_node, data, time_mat, pca, garage, shift, num_real_orders, etw_g, ltw_gr):
+                new_route = route.append(node)
+                stack.append(new_route)
+                res.append(new_route)
+                cnt += 1
+    return res
+
+
+# save the working version
+@njit
+def cdfs_order_gen(route, lookup_table, lookup_index, max_node, data, time_mat, pca, garage, shift, num_real_orders,
+                   etw_g, ltw_gr):
+    # stack version of route extension
+    res = List()
+    stack = [route]
+    cnt = 0
+    while stack:
+        route = stack.pop()
         end_node = route[-1]
         for j in range(lookup_index[end_node]):
             node = lookup_table[end_node, j]
+            cnt += 1
             if is_feasible(route, node, max_node, data, time_mat, pca, garage, shift, num_real_orders, etw_g, ltw_gr):
-                stack[num, :len(route)] = route
-                stack[num, len(route)] = node
-                rm[num] = len(route) + 1
-                res[cnt, :] = stack[num, :].copy()
-                num += 1
-                cnt += 1
-    return res[:cnt]
+                new_route = np.append(route, node)
+                stack.append(new_route)
+                res.append(new_route)
+    print(cnt)
+    return res
 
 
-def cdfs_order_gen_py(route, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage, shift,
-                      num_real_orders, etw_g, ltw_gr):
-    cnt = 0
-    res = np.zeros((1000000, max_num), dtype=int)  #
-    stack = np.zeros((10000, max_num), dtype=int)  #
-    num = 1
-    stack[0, :len(route)] = route
-    rm = np.zeros(10000, dtype=int)
-    rm[0] = len(route)
-    while num:
-        num -= 1
-        route = get_route(stack, num, rm)
-        stack[num] = 0  # np.zeros(max_num, dtype=int32)
-        end_node = route[-1]
-        for j in range(lookup_index[end_node]):
-            node = lookup_table[end_node, j]
-            if is_feasible(route, node, max_node, data, time_mat, pca, garage, shift, num_real_orders, etw_g, ltw_gr):
-                stack[num, :len(route)] = route
-                stack[num, len(route)] = node
-                rm[num] = len(route) + 1
-                res[cnt, :] = stack[num, :].copy()
-                num += 1
-                cnt += 1
-    return res[:cnt]
+# @njit
+# def cdfs_order_gen(route, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage, shift,
+#                    num_real_orders, etw_g, ltw_gr):
+#     cnt = 0
+#     res = np.zeros((1000000, max_num), dtype=np.int32)  #
+#     stack = np.zeros((10000, max_num), dtype=np.int32)  #
+#     num = 1
+#     stack[0, :len(route)] = route
+#     rm = np.zeros(10000, dtype=np.int32)
+#     rm[0] = len(route)
+#     while num:
+#         num -= 1
+#         route = get_route(stack, num, rm)
+#         stack[num] = 0  # np.zeros(max_num, dtype=int32)
+#         end_node = route[-1]
+#         for j in range(lookup_index[end_node]):
+#             node = lookup_table[end_node, j]
+#             if is_feasible(route, node, max_node, data, time_mat, pca, garage, shift, num_real_orders, etw_g, ltw_gr):
+#                 stack[num, :len(route)] = route
+#                 stack[num, len(route)] = node
+#                 rm[num] = len(route) + 1
+#                 res[cnt, :] = stack[num, :].copy()
+#                 num += 1
+#                 cnt += 1
+#     return res[:cnt]
+
+
+# @njit
+# def cdfs_order_gen_opt(route, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage, shift,
+#                        num_real_orders, etw_g, ltw_gr):
+#     cnt = 0
+#     res = np.zeros((1000000, max_num), dtype=np.int32)  #
+#     stack = np.zeros((10000, max_num), dtype=np.int32)  #
+#     num = 1
+#     stack[0, :len(route)] = route
+#     rm = np.zeros(10000, dtype=np.int32)
+#     rm[0] = len(route)
+#     while num:
+#         num -= 1
+#         route = get_route(stack, num, rm)
+#         stack[num] = 0  # np.zeros(max_num, dtype=int32)
+#         end_node = route[-1]
+#         for j in range(lookup_index[end_node]):
+#             node = lookup_table[end_node, j]
+#             f_bool = is_feasible(route, node, max_node, data, time_mat, pca, garage, shift, num_real_orders, etw_g,
+#                                  ltw_gr)
+#             stack[num, :len(route)] = route if f_bool else stack[num, :len(route)]
+#             stack[num, len(route)] = node if f_bool else stack[num, len(route)]
+#             rm[num] = len(route) + 1 if f_bool else len(route)
+#             res[cnt, :] = stack[num, :].copy() if f_bool else res[cnt, :]
+#             num = num + 1 if f_bool else num
+#             cnt = cnt + 1 if f_bool else cnt
+#     return res[:cnt]
+
+
+# def cdfs_order_gen_py(route, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage, shift,
+#                       num_real_orders, etw_g, ltw_gr):
+#     cnt = 0
+#     res = np.zeros((1000000, max_num), dtype=int)  #
+#     stack = np.zeros((10000, max_num), dtype=int)  #
+#     num = 1
+#     stack[0, :len(route)] = route
+#     rm = np.zeros(10000, dtype=int)
+#     rm[0] = len(route)
+#     while num:
+#         num -= 1
+#         route = get_route(stack, num, rm)
+#         stack[num] = 0  # np.zeros(max_num, dtype=int32)
+#         end_node = route[-1]
+#         for j in range(lookup_index[end_node]):
+#             node = lookup_table[end_node, j]
+#             if is_feasible(route, node, max_node, data, time_mat, pca, garage, shift, num_real_orders, etw_g, ltw_gr):
+#                 stack[num, :len(route)] = route
+#                 stack[num, len(route)] = node
+#                 rm[num] = len(route) + 1
+#                 res[cnt, :] = stack[num, :].copy()
+#                 num += 1
+#                 cnt += 1
+#     return res[:cnt]
 
 
 @njit
@@ -306,82 +375,63 @@ def get_route(stack, num, rm):
     return res
 
 
-@njit(fastmath=True, parallel=1)
-def cdfs_order_gen_par(route, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage, shift,
-                       num_real_orders, etw_g, ltw_gr):
-    cnt = 0
-    res = np.zeros((1000000, max_num), dtype=int32)
-    stack = np.zeros((10000, max_num), dtype=int32)
-    num = 1
-    stack[0, :len(route)] = route
-    rm = np.zeros(10000, dtype=int32)
-    rm[0] = len(route)
-    while num:
-        num -= 1
-        route = stack[num, :rm[num]].copy()
-        stack[num] = np.zeros(max_num, dtype=int32)
-        num_iter = lookup_index[route[-1]]
-        tmp = np.zeros((num_iter, max_num), dtype=int32)  # pre-allocation: stack
-        indicator = np.zeros(num_iter, dtype=boolean)  # pre-allocation: feasibility check
-        prev_node = route[-1]
-        for j in prange(num_iter):
-            node = lookup_table[prev_node, j]
-            indicator[j] = is_feasible(route, node, max_node, data, time_mat, pca, garage, shift, num_real_orders,
-                                       etw_g, ltw_gr)
-            new_route = np.append(route, node)
-            tmp[j, :len(new_route)] = new_route
-        num_feasible = sum(indicator)
-        stack[num:num + num_feasible] = tmp[indicator]
-        rm[num:num + num_feasible] = len(route) + 1
-        res[cnt:cnt + num_feasible] = tmp[indicator]
-        num += num_feasible
-        cnt += num_feasible
-    return res[:cnt]
+# @njit(fastmath=True)
+# def get_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage,
+#                                shift, num_real_orders, etw_g, ltw_gr):
+#     order_bundles = np.zeros((10000000, max_num), dtype=int32)
+#     ptr = 0
+#     for i in range(len(route_pair)):
+#         rr = cdfs_order_gen(route_pair[i], lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage,
+#                             shift, num_real_orders, etw_g, ltw_gr)
+#         n = len(rr)
+#         order_bundles[ptr:ptr + n, :] = rr
+#         ptr += n
+#     return order_bundles[:ptr]
 
 
-@njit(fastmath=True)
-def get_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage,
+@njit()
+def get_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, data, time_mat, pca, garage,
                                shift, num_real_orders, etw_g, ltw_gr):
-    order_bundles = np.zeros((10000000, max_num), dtype=int32)
-    ptr = 0
+    order_bundles = []
     for i in range(len(route_pair)):
-        rr = cdfs_order_gen(route_pair[i], lookup_table, lookup_index, max_node, max_num, data, time_mat, pca, garage,
-                            shift, num_real_orders, etw_g, ltw_gr)
-        n = len(rr)
-        order_bundles[ptr:ptr + n, :] = rr
-        ptr += n
-    return order_bundles[:ptr]
+        rr = cdfs_order_gen(route_pair[i], lookup_table, lookup_index, max_node, data, time_mat, pca, garage, shift,
+                            num_real_orders, etw_g, ltw_gr)
+        order_bundles.extend(rr)
+    return order_bundles
 
 
-def get_feasible_order_bundles_py(route_pair, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca,
-                                  garage, shift, num_real_orders, etw_g, ltw_gr):
-    order_bundles = np.zeros((10000000, max_num), dtype=int)
-    ptr = 0
-    for i in range(len(route_pair)):
-        rr = cdfs_order_gen_py(route_pair[i], lookup_table, lookup_index, max_node, max_num, data, time_mat, pca,
-                               garage,
-                               shift, num_real_orders, etw_g, ltw_gr)
-        n = len(rr)
-        order_bundles[ptr:ptr + n] = rr
-        ptr += n
-    return order_bundles[:ptr]
-
-
-def get_all_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca,
+@njit
+def get_all_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, data, time_mat, pca,
                                    garage_arr, shift, num_real_orders, etw_g, ltw_gr):
     num_gar = len(garage_arr)
-    res = np.zeros((10000000, max_num), dtype=int)
-    cnt = 0
-    num_cnt = np.zeros(num_gar + 1, dtype=int)
+    res = List()
+    num_cnt = [0]
     for i in range(num_gar):
         garage = garage_arr[i]
-        ob = get_feasible_order_bundles_py(route_pair, lookup_table, lookup_index, max_node, max_num, data, time_mat,
-                                           pca, garage, shift, num_real_orders, etw_g, ltw_gr)
+        ob = get_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, data, time_mat,
+                                        pca, garage, shift, num_real_orders, etw_g, ltw_gr)
         n = len(ob)
-        res[cnt:cnt + n] = ob
-        cnt += n
-        num_cnt[i + 1] = cnt
-    return res[:cnt], num_cnt
+        res.extend(ob)
+        num_cnt.append(n)
+    return res, num_cnt
+
+
+# @njit
+# def get_all_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, max_num, data, time_mat, pca,
+#                                    garage_arr, shift, num_real_orders, etw_g, ltw_gr):
+#     num_gar = len(garage_arr)
+#     res = np.zeros((10000000, max_num), dtype=np.int32)
+#     cnt = 0
+#     num_cnt = np.zeros(num_gar + 1, dtype=np.int32)
+#     for i in range(num_gar):
+#         garage = garage_arr[i]
+#         ob = get_feasible_order_bundles(route_pair, lookup_table, lookup_index, max_node, max_num, data, time_mat,
+#                                         pca, garage, shift, num_real_orders, etw_g, ltw_gr)
+#         n = ob.shape[0]
+#         res[cnt:cnt + n, :] = ob
+#         cnt += n
+#         num_cnt[i + 1] = cnt
+#     return res[:cnt], num_cnt
 
 
 @njit(fastmath=True)
@@ -443,3 +493,22 @@ def ob2dict(ob):
                 else:
                     cnt[node][i] = 1
     return res, cnt
+
+
+##########################mvp#####################################
+@njit
+def gen_rand_mat(n_col):
+    n_row = np.random.randint(1, 100)
+    return np.round(100 * np.random.random((n_row, n_col))).astype(np.int32)
+
+
+@njit
+def gen_all_mat(n_col):
+    res = np.zeros((10000, n_col), dtype=np.int32)
+    cnt = 0
+    for i in range(100):
+        mat = gen_rand_mat(n_col)
+        n = mat.shape[0]
+        res[cnt:cnt + n, :] = mat
+        cnt += n
+    return res[:cnt]
